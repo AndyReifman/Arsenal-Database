@@ -133,6 +133,7 @@ def getLineUps(matchID):
         return team1Start,team1Sub,team2Start,team2Sub
 
 def getMatchSite(matchID):
+    home = "Home"
     url = "https://www.espn.com/soccer/match?gameId=" + matchID
     lineWebsite = requests.get(url, timeout=15)
     line_html = lineWebsite.text
@@ -154,14 +155,40 @@ def getMatchSite(matchID):
     if venue != []:
         venue = venue[0]
     team1Start,team1Sub,team2Start,team2Sub = getLineUps(matchID)
-    print(ko_date)
-    print(team1fix)
-    for name in team1Start:
-        print(name)
-    print()
-    print(team2fix)
-    for name in team2Start:
-        print(name)
+    opposition = team1fix if team2fix is "Arsenal" else team2fix
+    if opposition == team1fix:
+        home = "Away"
+    #addGameQuery(ko_date, opposition,home,"premier league")
+    #addPlayersQuery(team1Start,team2Start)
+    addAppearancesQuery(ko_date,team1fix,team1Start,team2fix,team2Start)
 
+def addGameQuery(date, opposition, home, comp):
+    print(date)
+    print(opposition)
+    print("INSERT INTO games (date,opposition,`home/away`,competition)")
+    print("VALUES")
+    print("(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+comp+"'));")
+
+def addPlayersQuery(team1,team2):
+    query = "INSERT IGNORE INTO players (playerName)\n"
+    query += "VALUES\n"
+    for name in team1:
+        name = re.sub('(!\w+\s)','',name)
+        query += "(\""+name+"\"),\n"
+    for name in team2:
+        name = re.sub('(!\w+\s)','',name)
+        query += "(\""+name+"\"),\n"
+    print(query)
+
+def addAppearancesQuery(date,team1Name,team1,team2Name,team2):
+    query = "INSERT INTO appearances (game,player,club,sub)\n"
+    query += "VALUES\n"
+    for name in team1:
+        sub = "0"
+        if "!Sub" in name:
+            sub = "1"
+        name = re.sub('(!\w+\s)','',name)
+        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(selec id from clubs where name = '"+team1Name+"'),"+sub+"),\n"
+    print(query)
 
 getMatchSite(matchID)
