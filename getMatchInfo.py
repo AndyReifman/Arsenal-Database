@@ -7,10 +7,22 @@
 #   add the appearances, and add the goals.
 
 import requests,re
+import runSQL
 from unidecode import unidecode
+from bs4 import BeautifulSoup
 #!!IMPORTANT!! THIS SHOULD BE THE ONLY THING WE NEED TO UPDATE FOR EVERY MATCH
-matchID = "541578";
+matchID = "541641";
 #!!IMPORTANT!! THIS SHOULD BE THE ONLY THING WE NEED TO UPDATE FOR EVERY MATCH
+
+def updateName(name):
+    newName= {
+            "Edward Nketiah" : "Eddie Nketiah",
+            "Pape Abou-Cisse" : "Pape Abou Cisse",
+            "Pierre Emerick-Aubameyang" : "Pierre-Emerick Aubameyang",
+            "Youssef El Arabi" : "Youssef El-Arabi"
+    }
+    return newName.get(name,name)
+
 
 def getTimestamp():
     dt = str(datetime.datetime.now().month) + '/' + str(datetime.datetime.now().day) + ' '
@@ -57,11 +69,23 @@ def getLineUps(matchID):
                     if 'icon-soccer-substitution-before' in playerInfo:
                         playertext += '!sub '
                     if 'icon-yellowcard' in playerInfo:
+                        soup = BeautifulSoup(playerInfo, 'lxml')
+                        cards = soup.findAll("span",{"class","icon-yellowcard"})
                         playertext += '!yellow '
+                        for card in cards:
+                            playertext += card.text + ' '
                     if 'icon-soccer-goal' in playerInfo:
+                        soup = BeautifulSoup(playerInfo, 'lxml')
+                        goals = soup.findAll("span",{"class","icon-soccer-goal-before"})
                         playertext += '!goal '
+                        for goal in goals:
+                            playertext += goal.text + ' '
                     if 'icon-redcard' in playerInfo:
+                        soup = BeautifulSoup(playerInfo, 'lxml')
+                        reds = soup.findAll("span",{"class","icon-redcard"})
                         playertext += '!red '
+                        for red in reds:
+                            playertext += red.text + ' '
                     #playertext += re.findall('<span class="name">(?!<)(.*?)[<|&]', playerInfo, re.DOTALL)[0]
                     playertext += re.findall('<span class="name">.*href=".*/(.*?)"\sdata', playerInfo, re.DOTALL)[0]
                     playertext = unidecode(playertext).replace("-"," ", 1).title()
@@ -87,9 +111,23 @@ def getLineUps(matchID):
                     if 'icon-soccer-substitution-before' in playerInfo:
                         playertext += '!sub '
                     if 'icon-yellowcard' in playerInfo:
+                        soup = BeautifulSoup(playerInfo, 'lxml')
+                        cards = soup.findAll("span",{"class","icon-yellowcard"})
                         playertext += '!yellow '
+                        for card in cards:
+                            playertext += card.text + ' '
                     if 'icon-soccer-goal' in playerInfo:
+                        soup = BeautifulSoup(playerInfo, 'lxml')
+                        goals = soup.findAll("span",{"class","icon-soccer-goal-before"})
                         playertext += '!goal '
+                        for goal in goals:
+                            playertext += goal.text + ' '
+                    if 'icon-redcard' in playerInfo:
+                        soup = BeautifulSoup(playerInfo, 'lxml')
+                        reds = soup.findAll("span",{"class","icon-redcard"})
+                        playertext += '!red '
+                        for red in reds:
+                            playertext += red.text + ' '
                     #playertext += re.findall('<span class="name">(?!<)(.*?)[<|&]', playerInfo, re.DOTALL)[0]
                     playertext += re.findall('<span class="name">.*href=".*/(.*?)"\sdata', playerInfo, re.DOTALL)[0]
                     playertext = unidecode(playertext).replace("-"," ", 1).title()
@@ -150,35 +188,53 @@ def getMatchSite(matchID):
         ko_date = ko_date[0]
         ko_day = ko_date[8:]
 
+    compfull = re.findall('<div class="game-details header">(.*?)<', line_html, re.DOTALL)
+    if compfull != []:
+        comp = re.sub('20.*? ','',compfull[0]).strip(' \n\t\r')
+        if comp.find(',') != -1:
+            comp = comp[0:comp.index(',')]
+    else:
+        comp = ''
+
     ### SHOULD ADD HOME/AWAY LOGIC HERE
     venue = re.findall('<div>VENUE: (.*?)<', line_html, re.DOTALL)
     if venue != []:
         venue = venue[0]
     team1Start,team1Sub,team2Start,team2Sub = getLineUps(matchID)
-    opposition = team1fix if team2fix is "Arsenal" else team2fix
+    opposition = team1fix if team2fix == "Arsenal" else team2fix
     if opposition == team1fix:
         home = "Away"
-    #addGameQuery(ko_date, opposition,home,"premier league")
-    #addPlayersQuery(team1Start,team2Start)
+    addGameQuery(ko_date, opposition,home,comp)
+    addPlayersQuery(team1Start,team2Start)
     addAppearancesQuery(ko_date,team1fix,team1Start,team2fix,team2Start)
+    addGoalsQuery(ko_date,team1Start,team2Start)
+    addCardsQuery(ko_date,team1Start,team2Start)
 
 def addGameQuery(date, opposition, home, comp):
-    print(date)
-    print(opposition)
-    print("INSERT INTO games (date,opposition,`home/away`,competition)")
-    print("VALUES")
-    print("(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+comp+"'));")
+    query = "INSERT INTO games (date,opposition,`home/away`,competition)\n"
+    query += "VALUES\n"
+    query += "(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+comp+"'));\n"
+    f = open("game.sql", "w")
+    f.write(query)
+    f.close()
 
 def addPlayersQuery(team1,team2):
     query = "INSERT IGNORE INTO players (playerName)\n"
     query += "VALUES\n"
     for name in team1:
-        name = re.sub('(!\w+\s)','',name)
+        name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+        name = updateName(name)
         query += "(\""+name+"\"),\n"
-    for name in team2:
-        name = re.sub('(!\w+\s)','',name)
+    for name in team2[:-1]:
+        name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+        name = updateName(name)
         query += "(\""+name+"\"),\n"
-    print(query)
+    name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',team2[-1])
+    name = updateName(name)
+    query += "(\""+name+"\");\n"
+    f = open("players.sql", "w")
+    f.write(query)
+    f.close()
 
 def addAppearancesQuery(date,team1Name,team1,team2Name,team2):
     query = "INSERT INTO appearances (game,player,club,sub)\n"
@@ -187,8 +243,100 @@ def addAppearancesQuery(date,team1Name,team1,team2Name,team2):
         sub = "0"
         if "!Sub" in name:
             sub = "1"
-        name = re.sub('(!\w+\s)','',name)
-        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(selec id from clubs where name = '"+team1Name+"'),"+sub+"),\n"
-    print(query)
+        name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+        name = updateName(name)
+        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team1Name+"'),"+sub+"),\n"
+    for name in team2[:-1]:
+        sub = "0"
+        if "!Sub" in name:
+            sub = "1"
+        name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+        name = updateName(name)
+        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),"+sub+"),\n"
+    sub = "0"
+    if "!Sub" in name:
+        sub = "1"
+    name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',team2[-1])
+    name = updateName(name)
+    query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),"+sub+");\n"
+    f = open("appearance.sql", "w")
+    f.write(query)
+    f.close()
+
+def addGoalsQuery(date,team1,team2):
+    query = "INSERT INTO goals (appearance,minute)\n"
+    query += "VALUES\n"
+    for name in team1:
+        goals = re.findall('!Goal((?:\s\d+\'(?:\+\d+\')*)*)',name, re.IGNORECASE)
+        name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+        name = updateName(name)
+        for goal in goals:
+            goal = goal.strip()
+            goal = goal.split(' ')
+            for g in goal:
+                query+="((select id from appearances where player = (SELECT id from players where playerName = '"+name+"') and game = (select id from games where date='"+date+"')),\""+g+"\"),\n"
+    for name in team2:
+        goals = re.findall('!Goal((?:\s\d+\'(?:\+\d+\')*)*)',name, re.IGNORECASE)
+        name = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+        name = updateName(name)
+        for goal in goals:
+            goal = goal.strip()
+            goal = goal.split(' ')
+            for g in goal:
+                query+="((select id from appearances where player = (SELECT id from players where playerName = '"+name+"') and game = (select id from games where date='"+date+"')),\""+g+"\"),\n"
+    query = ";".join(query.rsplit(",",1))
+    f = open("goals.sql", "w")
+    f.write(query)
+    f.close()
+
+def addCardsQuery(date,team1,team2):
+    query = "INSERT INTO cards (appearance,yellow,red)\n"
+    query += "VALUES\n"
+    hquery = ""
+    for name in team1:
+        c = 0
+        if "!Yellow" in name:
+            card = re.findall('!Yellow((?:\s\d+\'(?:\+\d+\')*)*)',name,re.IGNORECASE)[0].strip()
+            temp = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+            temp = updateName(temp)
+            hquery += "((select id from appearances where player = (SELECT id from players where playerName = '"+temp+"') and game = (select id from games where date='"+date+"')),\""+card+"\""
+            c = 1
+        if "!Red" in name:
+            card = re.findall('!Red((?:\s\d+\'(?:\+\d+\')*)*)',name,re.IGNORECASE)[0].strip()
+            if c == 1:
+                hquery += ",\""+card+"\"),\n"
+                c == 0
+            else:
+                temp = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+                temp = updateName(temp)
+                hquery += "((select id from appearances where player = (SELECT id from players where playerName = '"+temp+"') and game = (select id from games where date='"+date+"')),\"\",\""+card+"\"),\n"
+        if c == 1:
+            hquery += ",\"\"),\n"
+    aquery = ""
+    for name in team2:
+        c = 0
+        if "!Yellow" in name:
+            card = re.findall('!Yellow((?:\s\d+\'(?:\+\d+\')*)*)',name,re.IGNORECASE)[0].strip()
+            temp = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+            temp = updateName(temp)
+            aquery += "((select id from appearances where player = (SELECT id from players where playerName = '"+temp+"') and game = (select id from games where date='"+date+"')),\""+card+"\""
+            c = 1
+        if "!Red" in name:
+            card = re.findall('!Red((?:\s\d+\'(?:\+\d+\')*)*)',name,re.IGNORECASE)[0].strip()
+            if c == 1:
+                aquery += ",\""+card+"\"),\n"
+                c == 0
+            else:
+                temp = re.sub('(!\w+(?:\s\d+\'(?:\+\d+\')*)*\s)','',name)
+                temp = updateName(temp)
+                aquery += "((select id from appearances where player = (SELECT id from players where playerName = '"+temp+"') and game = (select id from games where date='"+date+"')),\"\",\""+card+"\"),\n"
+        if c == 1:
+            aquery += ",\"\"),\n"
+    query += hquery + aquery
+    query = ";".join(query.rsplit(",",1))
+    f = open("cards.sql", "w")
+    f.write(query)
+    f.close()
+
 
 getMatchSite(matchID)
