@@ -11,13 +11,16 @@ import runSQL
 from unidecode import unidecode
 from bs4 import BeautifulSoup
 #!!IMPORTANT!! THIS SHOULD BE THE ONLY THING WE NEED TO UPDATE FOR EVERY MATCH
-#matchID = "990053";
+matchID = "3192129";
 #!!IMPORTANT!! THIS SHOULD BE THE ONLY THING WE NEED TO UPDATE FOR EVERY MATCH
 
 logging.basicConfig(filename="log.log",filemode='a',level=logging.INFO)
 
 def updateName(name):
     newName= {
+            "Aaron Wan Bissaka" : "Aaron Wan-Bissaka",
+            "Ainsley Maitland Niles" : "Ainsley Maitland-Niles",
+            "David De Gea" : "David De-Gea",
             "Edward Nketiah" : "Eddie Nketiah",
             "Pape Abou-Cisse" : "Pape Abou Cisse",
             "Pierre Emerick-Aubameyang" : "Pierre-Emerick Aubameyang",
@@ -27,6 +30,29 @@ def updateName(name):
     if '\'' in name:
         name = re.sub("'", "\\'",name)
     return unidecode(newName.get(name,name))
+
+def fixStadium(stadium):
+    newStadium = {
+            "Artemio Franchi" : "Stadio Artemio Franchi",
+            "Commerzbank Arena" : "Commerzbank-Arena",
+            "Hillsborough" : "Hillsborough Stadium",
+            "Stadio Georgios Karaiskakis" : "Karaiskakis Stadium",
+            "Knights Community Stadium" : "Gander Green Lane",
+            "Johan Cruijff ArenA" : "Johan Cruyff Arena",
+            "Olimpico di Roma" : "Stadio Olimpico",
+            "Olympiako Stadio Athinas Spyros Louis" : "Athens Olympic Stadium",
+            "Madejski" : "Madejski Stadium",
+            "Maksimir" : "Stadion Maksimir",
+            "Northern Commercials Stadium" : "Valley Parade",
+            "Partizan Stadion" : "Partizan Stadium",
+            "St Andrew\\'s Trillion Trophy Stadium" : "St Andrew\'s",
+            "Stadium mk" : "Plough Lane",
+            "Wembley Stadium (old)" : "Wembley Stadium"
+            }
+    stadium = newStadium.get(stadium,stadium)
+    if '\'' in stadium:
+        stadium = re.sub("'","\\'",stadium)
+    return unidecode(stadium)
 
 def fixTeam(team):
     newTeam = {
@@ -69,12 +95,15 @@ def fixTeam(team):
             "PAOK Thessaloniki" : "PAOK FC",
             "Portsmouth FC" : "Portsmouth United",
             "Qarabağ Ağdam" : "FK Qarabag",
+            "RC Lens" : "Lens",
+            "RCD Mallorca" : "Mallorca",
             "RFC Lüttich" : "RFC Liège",
             "RSC Anderlecht" : "Anderlecht",
             "Reading FC" : "Reading",
-            "RC Lens" : "Lens",
+            "Rosenborg BK" : "Rosenborg",
             "SC Braga" : "Braga",
             "SL Benfica" : "Benfica",
+            "SK Slavia Prague" : "Slavia Prague",
             "SS Lazio" : "Lazio",
             "SSC Napoli" : "Napoli",
             "Stade Rennais FC" : "Stade Rennes",
@@ -211,7 +240,7 @@ def getGoals(soup):
             team2goals[name].append(timestamp)
     return team1goals,team2goals
 
-def getSubs(soup):
+def getSubs(soup,team1,team2):
     team1Sub = soup.find("div",{"class","sb-ereignisse"}).findAll("li",{"class","sb-aktion-heim"})
     team2Sub = soup.find("div",{"class","sb-ereignisse"}).findAll("li",{"class","sb-aktion-gast"})
     team1subs = {}
@@ -219,20 +248,26 @@ def getSubs(soup):
     if team1Sub:
         for sub in team1Sub:
             name = sub.findAll("a",{"class","wichtig"})[0].text
+            outName = sub.findAll("a",{"class","wichtig"})[1].text
             timestamp = convertTimestamp(sub.find("span")["style"])
             try:
                 team1subs[name].append(timestamp)
             except:
                 team1subs[name] = timestamp
+            index = team1.index(outName)
+            team1[index] = outName + " " + timestamp
     if team2Sub:
         for sub in team2Sub:
             name = sub.findAll("a",{"class","wichtig"})[0].text
+            outName = sub.findAll("a",{"class","wichtig"})[1].text
             timestamp = convertTimestamp(sub.find("span")["style"])
             try:
                 team2subs[name].append(timestamp)
             except:
                 team2subs[name] = timestamp
-    return team1subs,team2subs
+            index = team2.index(outName)
+            team2[index] = outName + " " + timestamp
+    return team1subs,team2subs,team1,team2
 
 def getCards(soup):
     team1Card = soup.find("div",{"class","sb-ereignisse"}).findAll("li",{"class","sb-aktion-heim"})
@@ -278,7 +313,7 @@ def getLineUps(matchID):
                 if header == "Goals":
                     team1goals,team2goals = getGoals(subsection)
                 if header == "Substitutions":
-                    team1subs,team2subs = getSubs(subsection)
+                    team1subs,team2subs,team1,team2 = getSubs(subsection,team1,team2)
                 if header == "Cards":
                     team1cards,team2cards = getCards(subsection)
             except:
@@ -328,24 +363,25 @@ def getMatchSite(matchID):
     comp = soup.find("div",{"class","spielername-profil"}).text.strip()
 
     ### SHOULD ADD HOME/AWAY LOGIC HERE
-    venue = re.findall('<div>VENUE: (.*?)<', line_html, re.DOTALL)
-    if venue != []:
-        venue = venue[0]
+    venue = soup.findAll("div",{"class","sb-spieldaten"})[0].select("a[href*=stadion]")[0].text
+    if '\'' in venue:
+        venue = re.sub("'", "\\'",venue)
     team1Start,team1Sub,team1Goals,team1Cards,team2Start,team2Sub,team2Goals,team2Cards = getLineUps(matchID)
     opposition = team1fix if team2fix == "Arsenal" else team2fix
     if opposition == team1fix:
         home = "Away"
-    addGameQuery(ko_date,opposition,home,comp)
+    addGameQuery(ko_date,opposition,home,comp,venue)
     addPlayersQuery(team1Start,team2Start,team1Sub,team2Sub)
     addAppearancesQuery(ko_date,team1fix,team1Start,team1Sub,team2fix,team2Start,team2Sub)
     addGoalsQuery(ko_date,team1Goals,team2Goals,team1fix,team2fix)
     addCardsQuery(ko_date,team1Cards,team2Cards)
     return opposition
 
-def addGameQuery(date, opposition, home, comp):
-    query = "INSERT INTO games (date,opposition,`home/away`,competition)\n"
+def addGameQuery(date, opposition, home, comp,stadium):
+    query = "INSERT INTO games (date,opposition,`home/away`,competition,stadium)\n"
+    stadium = fixStadium(stadium)
     query += "VALUES\n"
-    query += "(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+updateLeague(comp)+"'))\n"
+    query += "(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+updateLeague(comp)+"'),(select id from stadiums where name = '"+stadium+"'))\n"
     query += "ON DUPLICATE KEY UPDATE opposition = (select id from clubs where name ='"+opposition+"');"
     f = open("game.sql", "w")
     f.write(query)
@@ -372,22 +408,35 @@ def addPlayersQuery(team1,team2,team1subs,team2subs):
     f.close()
 
 def addAppearancesQuery(date,team1Name,team1,team1sub,team2Name,team2, team2sub):
-    query = "INSERT IGNORE INTO appearances (game,player,club,sub)\n"
+    query = "INSERT IGNORE INTO appearances (game,player,club,subIn,subOut)\n"
     query += "VALUES\n"
+    sub = re.compile('\d+')
     for name in team1:
-        name = updateName(name)
-        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team1Name+"'),\"\"),\n"
+        if sub.search(name):
+            subOut = re.findall('.*\s(\d.*)',name,re.IGNORECASE)[0]
+            name = re.sub('(\d.*)','',name)
+            name = updateName(name)
+            query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team1Name+"'),\"\",\""+subOut+"\"),\n"
+        else:
+            name = updateName(name)
+            query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team1Name+"'),\"\",\"\"),\n"
     for name in team1sub:
-        sub = team1sub[name]
+        subIn = team1sub[name]
         name = updateName(name)
-        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team1Name+"'),\""+sub+"\"),\n"
+        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team1Name+"'),\""+subIn+"\",\"\"),\n"
     for name in team2:
-        name = updateName(name)
-        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),\"\"),\n"
+        if sub.search(name):
+            subOut = re.findall('.*\s(\d.*)',name,re.IGNORECASE)[0]
+            name = re.sub('(\d.*)','',name)
+            name = updateName(name)
+            query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),\"\",\""+subOut+"\"),\n"
+        else:
+            name = updateName(name)
+            query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),\"\",\"\"),\n"
     for name in team2sub:
-        sub = team2sub[name]
+        subIn = team2sub[name]
         name = updateName(name)
-        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),\""+sub+"\"),\n"
+        query += "((select id from games where date = '"+date+"'),(select id from players where playerName = '"+name+"'),(select id from clubs where name = '"+team2Name+"'),\""+subIn+"\",\"\"),\n"
     query = ";".join(query.rsplit(",",1))
     f = open("appearance.sql", "w")
     f.write(query)
@@ -465,14 +514,14 @@ if __name__ == '__main__':
     m = open("matches.txt","r")
     #clubsAdded = []
     failures = []
+    #getMatchSite(matchID)
     for match in m:
         opposition = getMatchSite(match.strip())
         rc = runSQL.runQuery()
-        #rc = runSQL.runQuery()
         if rc is 2:
-            logging.warning("Need to fix club name: " + opposition + " matchID: " +match.strip())
-        #if rc is 0:
-        #    logging.warning(match.strip() +  " added.")
+            logging.warning("Need to fix club name: " + opposition + " or stadium for matchID: " +match.strip())
+    #if rc is 0:
+        #logging.warning(match.strip() +  " added.")
         #if rc is not 0:
         #    failures.append(match)
     #print("Teams Added: ") if clubsAdded else None
