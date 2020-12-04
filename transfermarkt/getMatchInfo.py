@@ -156,15 +156,15 @@ def getMonth(month):
 def updateLeague(league):
     newLeagues = {
             "Barclays Premier League" : "Premier League",
-            "English Carabao Cup" : "English Football League Cup",
-            "English Carling Cup" : "English Football League Cup",
-            "English Capital One Cup" : "English Football League Cup",
+            "English Carabao Cup" : "League Cup",
+            "English Carling Cup" : "League Cup",
+            "English Capital One Cup" : "League Cup",
             "Europa League" : "UEFA Europa League",
-            "EFL Cup" : "English Football League Cup",
+            "EFL Cup" : "League Cup",
             "Community Shield" : "English FA Community Shield",
-            "FA Cup" : "English FA Cup",
+            #"FA Cup" : "English FA Cup",
             "First Division (until 91/92)" : "First Division",
-            "League Cup" : "English Football League Cup",
+            #"League Cup" : "English Football League Cup",
             "UEFA Champions League Qualifying" : "UEFA Champions League",
             "UEFA-Cup" : "UEFA Cup"
             }
@@ -512,9 +512,7 @@ def updateClubs(opposition):
 
 if __name__ == '__main__':
     m = open("matches.txt","r")
-    #clubsAdded = []
     failures = []
-    #getMatchSite(matchID)
     for match in m:
         opposition = getMatchSite(match.strip())
         rc = runSQL.runQuery()
