@@ -6,12 +6,12 @@
 # Set a match URL and create a query to add a team, add a match, add the players,
 #   add the appearances, and add the goals.
 
-import requests,re,subprocess,logging,time,traceback
+import requests,re,subprocess,logging,time,traceback,datetime,os
 import runSQL
 from unidecode import unidecode
 from bs4 import BeautifulSoup
 #!!IMPORTANT!! THIS SHOULD BE THE ONLY THING WE NEED TO UPDATE FOR EVERY MATCH
-matchID = "3192129";
+#matchID = "3491263"
 #!!IMPORTANT!! THIS SHOULD BE THE ONLY THING WE NEED TO UPDATE FOR EVERY MATCH
 
 logging.basicConfig(filename="log.log",filemode='a',level=logging.INFO)
@@ -31,12 +31,23 @@ def updateName(name):
         name = re.sub("'", "\\'",name)
     return unidecode(newName.get(name,name))
 
+def getSlug(name):
+    newName= {
+            "Ainsley Maitland-Niles" : "Maitland-Niles",
+            "Pierre-Emerick Aubameyang" : "Aubameyang",
+    }
+    name = unidecode(newName.get(name,name))
+    if '\'' in name:
+        name = re.sub("'", "\\'",name)
+    slug = name.replace(' ','-')
+    return unidecode(newName.get(slug,slug))
+
 def fixStadium(stadium):
     newStadium = {
             "Artemio Franchi" : "Stadio Artemio Franchi",
             "Commerzbank Arena" : "Commerzbank-Arena",
             "Hillsborough" : "Hillsborough Stadium",
-            "Stadio Georgios Karaiskakis" : "Karaiskakis Stadium",
+            "Idraetsparken" : "Parken",
             "Knights Community Stadium" : "Gander Green Lane",
             "Johan Cruijff ArenA" : "Johan Cruyff Arena",
             "Olimpico di Roma" : "Stadio Olimpico",
@@ -45,8 +56,11 @@ def fixStadium(stadium):
             "Maksimir" : "Stadion Maksimir",
             "Northern Commercials Stadium" : "Valley Parade",
             "Partizan Stadion" : "Partizan Stadium",
-            "St Andrew\\'s Trillion Trophy Stadium" : "St Andrew\'s",
+            "Stadio Georgios Karaiskakis" : "Karaiskakis Stadium",
             "Stadium mk" : "Plough Lane",
+            "St Andrew\\'s Trillion Trophy Stadium" : "St. Andrew\'s Trillion Trophy Stadium",
+            "St James\\' Park" : "St. James\' Park",
+            "St Mary\\'s Stadium" : "St. Mary\'s Stadium",
             "Wembley Stadium (old)" : "Wembley Stadium"
             }
     stadium = newStadium.get(stadium,stadium)
@@ -67,6 +81,7 @@ def fixTeam(team):
             "Burnley FC" : "Burnley",
             "Celtic FC" : "Celtic",
             "Chelsea FC" : "Chelsea",
+            "Darlington FC (liq.)" : "Darlington FC",
             "Everton FC" : "Everton",
             "FC Barcelona" : "Barcelona",
             "FC Basel 1893" : "FC Basel",
@@ -97,6 +112,7 @@ def fixTeam(team):
             "Qarabağ Ağdam" : "FK Qarabag",
             "RC Lens" : "Lens",
             "RCD Mallorca" : "Mallorca",
+            "RC Lüttich" : "RFC Liège",
             "RFC Lüttich" : "RFC Liège",
             "RSC Anderlecht" : "Anderlecht",
             "Reading FC" : "Reading",
@@ -174,16 +190,20 @@ def updateLeague(league):
     return league
 
 def convertDate(date):
-    if date.count(',') == 2:
+    if date.count(',') > 0:
         date = date[5:]
     try:
         date = date.split(" ")
         year = date[2]
         day = date[1].strip(',')
         month = getMonth(date[0])
-    except Exception:
-        pass
-
+    except IndexError:
+        date = date[0].split("/")
+        year = date[2]
+        day = date[1]
+        month = date[0]
+    except:
+        return date
     return year + '-' + month + '-'+day
 
 def getTimestamp():
@@ -206,17 +226,29 @@ def getTeams(soup):
             for row in teamTable.find_all("tr")[:-1]:
                 names = row.findAll("td")[1].text.strip().split(",")
                 for name in names:
-                    team.append(name.strip())
+                    if name == ' Jr.':
+                        team[-1] = team[-1] + name
+                    else:
+                        team.append(name.strip())
             teams[i] = (team)
         except:
-            teamTable = box.find_all("div",{"class","aufstellung-spieler-container"})
-            names = []
-            for row in teamTable:
-                for a in row.findAll('a',href=True):
-                    name = a['href'].split('/',2)[1:2]
-                    name = str(name[0].replace('-',' ')).title()
-                    team.append(name.strip())
-            teams[i] = (team)
+            try:
+                teamTable = box.find_all("div",{"class","large-7 columns"})[0]
+                table = teamTable.find_all("tr")
+                for row in table:
+                    cols = row.find_all("a")
+                    for name in cols:
+                        team.append(name.text.strip())
+                teams[i] = (team)
+            except:
+                teamTable = box.find_all("div",{"class","aufstellung-spieler-container"})
+                names = []
+                for row in teamTable:
+                    for a in row.findAll('a',href=True):
+                        name = a['href'].split('/',2)[1:2]
+                        name = str(name[0].replace('-',' ')).title()
+                        team.append(name.strip())
+                teams[i] = (team)
     return teams[0],teams[1]
 
 def getGoals(soup):
@@ -321,6 +353,11 @@ def getLineUps(matchID):
     except:
         traceback.print_exc()
         print("Oh No. That Failed")
+    
+    try:
+        team1
+    except:
+        return '','','','','','','',''
 
     return team1,team1subs,team1goals,team1cards,team2,team2subs,team2goals,team2cards
 
@@ -334,8 +371,12 @@ def getMatchSite(matchID):
             lineWebsite = requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36'})
             line_html = lineWebsite.text
             soup = BeautifulSoup(line_html, "lxml")
-            team1fix = soup.findAll("div",{"class","sb-team sb-heim hide-for-small"})[0].find("a",{"class","sb-vereinslink"}).text
-            team2fix = soup.findAll("div",{"class","sb-team sb-gast hide-for-small"})[0].find("a",{"class","sb-vereinslink"}).text
+            try:
+                team1fix = soup.findAll("div",{"class","sb-team sb-heim hide-for-small"})[0].find("a",{"class","sb-vereinslink"}).text
+                team2fix = soup.findAll("div",{"class","sb-team sb-gast hide-for-small"})[0].find("a",{"class","sb-vereinslink"}).text
+            except:
+                team1fix = soup.findAll("div",{"class","sb-team sb-heim"})[0].find("a",{"class","sb-vereinslink"}).text
+                team2fix = soup.findAll("div",{"class","sb-team sb-gast"})[0].find("a",{"class","sb-vereinslink"}).text
             break
         except IndexError as e:
             time.sleep(10)
@@ -350,10 +391,14 @@ def getMatchSite(matchID):
     team2fix = fixTeam(team2fix)
     
     try: 
-        ko_date = soup.findAll("div",{"class","sb-spieldaten"})[0].findAll("a")[1].text.strip()
+        #ko_date = soup.findAll("div",{"class","sb-spieldaten"})[0].findAll("a")[1].text.strip()
+        ko_date = soup.findAll("div",{"class","sb-spieldaten"})[0].findAll("a")[1]['href'].rsplit('/',1)[-1]
+        if len(ko_date) != 10:
+            ko_date = soup.findAll("div",{"class","sb-spieldaten"})[0].findAll("a")[0]['href'].rsplit('/',1)[-1]
         if ko_date != []:
             ko_day = ko_date[:3]
-            ko_date = convertDate(ko_date)
+            #ko_date = convertDate(ko_date)
+
     except:
         ko_date = soup.findAll("div",{"class","sb-spieldaten"})[0].findAll("a")[0].text.strip()
         if ko_date != []:
@@ -371,6 +416,8 @@ def getMatchSite(matchID):
     if opposition == team1fix:
         home = "Away"
     addGameQuery(ko_date,opposition,home,comp,venue)
+    if team1Start == []:
+        return opposition
     addPlayersQuery(team1Start,team2Start,team1Sub,team2Sub)
     addAppearancesQuery(ko_date,team1fix,team1Start,team1Sub,team2fix,team2Start,team2Sub)
     addGoalsQuery(ko_date,team1Goals,team2Goals,team1fix,team2fix)
@@ -381,27 +428,35 @@ def addGameQuery(date, opposition, home, comp,stadium):
     query = "INSERT INTO games (date,opposition,`home/away`,competition,stadium)\n"
     stadium = fixStadium(stadium)
     query += "VALUES\n"
-    query += "(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+updateLeague(comp)+"'),(select id from stadiums where name = '"+stadium+"'))\n"
+    query += "(\""+date+"\",(select id from clubs where name = '"+opposition+"'),\""+home+"\",(select id from competitions where competition = '"+updateLeague(comp)+"'),(select id from stadiums where name = \""+stadium+"\"))\n"
     query += "ON DUPLICATE KEY UPDATE opposition = (select id from clubs where name ='"+opposition+"');"
     f = open("game.sql", "w")
     f.write(query)
     f.close()
 
 def addPlayersQuery(team1,team2,team1subs,team2subs):
-    query = "INSERT IGNORE INTO players (playerName)\n"
+    query = "INSERT IGNORE INTO players (playerName,slug)\n"
     query += "VALUES\n"
     for name in team1:
+        name = re.sub('\d.*','',name).rstrip()
         name = updateName(name)
-        query += "(\""+name+"\"),\n"
+        slug = getSlug(name)
+        query += "(\""+name+"\",\""+slug+"\"),\n"
     for name in team1subs:
-        name = updateName(name)
-        query += "(\""+name+"\"),\n"
+        name = re.sub('\d.*','',name).rstrip()
+        ame = updateName(name)
+        slug = getSlug(name)
+        query += "(\""+name+"\",\""+slug+"\"),\n"
     for name in team2:
+        name = re.sub('\d.*','',name).rstrip()
         name = updateName(name)
-        query += "(\""+name+"\"),\n"
+        slug = getSlug(name)
+        query += "(\""+name+"\",\""+slug+"\"),\n"
     for name in team2subs:
+        name = re.sub('\d.*','',name).rstrip()
         name = updateName(name)
-        query += "(\""+name+"\"),\n"
+        slug = getSlug(name)
+        query += "(\""+name+"\",\""+slug+"\"),\n"
     query = ";".join(query.rsplit(",",1))
     f = open("players.sql", "w")
     f.write(query)
@@ -512,20 +567,14 @@ def updateClubs(opposition):
 
 if __name__ == '__main__':
     m = open("matches.txt","r")
+    #m = [matchID]
     failures = []
+    queries = ['game.sql','players.sql','appearance.sql','cards.sql','goals.sql']
     for match in m:
+        for query in queries:
+            try:
+                os.remove(query)
+            except FileNotFoundError as e:
+                pass
         opposition = getMatchSite(match.strip())
-        rc = runSQL.runQuery()
-        if rc is 2:
-            logging.warning("Need to fix club name: " + opposition + " or stadium for matchID: " +match.strip())
-    #if rc is 0:
-        #logging.warning(match.strip() +  " added.")
-        #if rc is not 0:
-        #    failures.append(match)
-    #print("Teams Added: ") if clubsAdded else None
-    #for club in clubsAdded:
-    #    print(club.strip())
-    #print("Failures: ") if failures else None
-    #for fail in failures:
-        #print(fail.strip())
-
+        rc = runSQL.main(match.strip())
